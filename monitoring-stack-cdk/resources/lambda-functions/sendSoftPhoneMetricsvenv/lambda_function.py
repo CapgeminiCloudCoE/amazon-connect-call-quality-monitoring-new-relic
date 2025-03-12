@@ -3,20 +3,20 @@
 
 import json
 import os
-from elasticsearch import Elasticsearch, RequestsHttpConnection
+from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
-from elasticsearch.helpers import bulk
+from opensearchpy.helpers import bulk
 import boto3
 
 ## Get the information we need to establish a connection
 host = os.environ.get('ENDPOINT')
 region = os.environ.get('REGION')
-service = 'es'
+service = 'es'  # The service name remains 'es' for backward compatibility
 credentials = boto3.Session().get_credentials()
 awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, service, session_token=credentials.token)
 
-## Establish the connection to Amazon Elasticsearch
-es = Elasticsearch(
+## Establish the connection to Amazon OpenSearch
+client = OpenSearch(
     hosts = [{'host': host, 'port': 443}],
     http_auth = awsauth,
     use_ssl = True,
@@ -36,9 +36,9 @@ def lambda_handler(event, context):
     body = add_ice_servers(body, callConfig)
     body = add_external_ip(body, event)
 
-    ## Send the data to Amazon ElasticSearch
+    ## Send the data to Amazon OpenSearch
     print("Starting bulk upload")
-    bulk(es, format_event(body))
+    bulk(client, format_event(body))
     print("Completed bulk upload")
 
     return {
@@ -60,9 +60,8 @@ def format_event(body):
                 stream[key] = int(stream[key])
         yield {
             "_index": "softphonestreamstats-",
-            "_type": "document",
             "pipeline": "stats_dailyindex",
-            "doc": {
+            "_source": {
                     **body,
                     "softphoneStreamType": stream['softphoneStreamType'],
                     "timestamp": stream['timestamp'],

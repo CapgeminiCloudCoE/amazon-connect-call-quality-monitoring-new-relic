@@ -1,0 +1,9 @@
+{
+  "name": "connect-monitoring-frontend",
+  "version": "1.0.0",
+  "description": "Frontend resources for Amazon Connect monitoring",
+  "dependencies": {
+    "amazon-connect-streams": "^2.9.1",
+    "amazon-connect-chatjs": "^2.9.1"
+  }
+}

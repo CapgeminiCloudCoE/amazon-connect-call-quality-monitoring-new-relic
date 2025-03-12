@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: MIT-0
 
 import 'source-map-support/register';
-import * as cdk from '@aws-cdk/core';
+import { App } from 'aws-cdk-lib';
 import { DeploymentCdkResourcesStack } from '../lib/deployment-cdk-resources-stack';
 
-const app = new cdk.App();
+const app = new App();
 new DeploymentCdkResourcesStack(app, 'DemoTemplate');

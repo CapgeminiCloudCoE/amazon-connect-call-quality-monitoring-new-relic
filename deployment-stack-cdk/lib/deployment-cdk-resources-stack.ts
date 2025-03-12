@@ -1,50 +1,62 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: MIT-0
 
-import * as cdk from '@aws-cdk/core';
-import * as codebuild from '@aws-cdk/aws-codebuild'
-import * as iam from '@aws-cdk/aws-iam'
-import * as lambda from '@aws-cdk/aws-lambda'
-import * as cloudformation from '@aws-cdk/aws-cloudformation'
-import * as ssm from '@aws-cdk/aws-ssm'
-import * as fs from 'fs'
-import { Stack } from '@aws-cdk/core';
+import { 
+  Stack, 
+  StackProps, 
+  CfnParameter, 
+  CfnOutput, 
+  Duration, 
+  Fn, 
+  CfnCustomResource,
+  CustomResource
+} from 'aws-cdk-lib';
+import { Construct } from 'constructs';
+import * as codebuild from 'aws-cdk-lib/aws-codebuild';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as cr from 'aws-cdk-lib/custom-resources';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as fs from 'fs';
 const buildSpecJson = require('../resources/buildspec/buildspec.json');
 
 /**
  * TODO: Clean up strings and raw json into files in /lib/static
  */
-export class DeploymentCdkResourcesStack extends cdk.Stack {
-  constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
+export class DeploymentCdkResourcesStack extends Stack {
+  constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
     
-    cdk.Stack.of(this).addTransform('AWS::Serverless-2016-10-31')
+    Stack.of(this).addTransform('AWS::Serverless-2016-10-31');
 
-    var ccpUrlParameter = new cdk.CfnParameter(this, 'CcpUrl', {
+    const ccpUrlParameter = new CfnParameter(this, 'CcpUrl', {
       type: "String",
       description: "The URL of your softphone."
     });
 
-    var samlUrlParameter = new cdk.CfnParameter(this, 'SamlUrl', {
+    const samlUrlParameter = new CfnParameter(this, 'SamlUrl', {
       type: "String",
       description: "The SAML URL for your instance. Leave empty if you aren't using SAML.",
       default: ''
     });
 
-    var splunkUrlParameter = new cdk.CfnParameter(this, 'SplunkUrl', {
+    const splunkUrlParameter = new CfnParameter(this, 'SplunkUrl', {
       type: "String",
       description: "The Splunk URL to send data to. Leave empty if you aren't using Splunk.",
       default: ''
     });
 
-    var splunkTokenParameter = new cdk.CfnParameter(this, 'SplunkToken', {
+    const splunkTokenParameter = new CfnParameter(this, 'SplunkToken', {
       type: "String",
       description: "Your Splunk HEC token. Leave empty if you aren't using Splunk",
       default: ''
     });
 
-    var cdkProject = new codebuild.Project(this, 'CDK Builder', {
+    const cdkProject = new codebuild.Project(this, 'CDK Builder', {
       buildSpec: codebuild.BuildSpec.fromObject(buildSpecJson),
+      environment: {
+        buildImage: codebuild.LinuxBuildImage.STANDARD_7_0
+      },
       environmentVariables: {
         "CCP_URL": {value: ccpUrlParameter.valueAsString},
         "SAML_URL": {value: samlUrlParameter.valueAsString},
@@ -53,50 +65,46 @@ export class DeploymentCdkResourcesStack extends cdk.Stack {
       },
     });
 
-  
-    
     const managedPolicies = [
       'CloudFrontFullAccess',
       'AWSCloudFormationFullAccess',
       'AmazonCognitoPowerUser',
       'CloudWatchLogsFullAccess',
-      'AmazonESFullAccess',
+      'AmazonOpenSearchServiceFullAccess',
       'CloudWatchEventsFullAccess',
       'IAMFullAccess',
       'AWSKeyManagementServicePowerUser',
       'AWSLambda_FullAccess',
-    ]
+    ];
 
-    const suffix = cdk.Fn.select(3, cdk.Fn.split('-', cdk.Fn.select(2, cdk.Fn.split('/', this.stackId))));
+    const suffix = Fn.select(3, Fn.split('-', Fn.select(2, Fn.split('/', this.stackId))));
 
     const codeBuildPolicy = new iam.ManagedPolicy(this, 'CDK Deployer Policy', {
       managedPolicyName: 'ConnectMonitoringArtifactAccess' + suffix
     });
 
     codeBuildPolicy.addStatements(
-      iam.PolicyStatement.fromJson({
-        "Action": "firehose:*",
-        "Resource": "*",
-        "Effect": "Allow"
+      new iam.PolicyStatement({
+        actions: ["firehose:*"],
+        resources: ["*"],
+        effect: iam.Effect.ALLOW
       }),
-      iam.PolicyStatement.fromJson({
-        "Action": [
+      new iam.PolicyStatement({
+        actions: [
           "s3:GetObject",
           "s3:ListBucket",
           "s3:GetObjectVersion"
         ],
-        "Resource": "arn:aws:s3:::amazon-connect-monitoring-test-artifact-bucket",
-        "Effect": "Allow"
+        resources: ["arn:aws:s3:::amazon-connect-monitoring-test-artifact-bucket"],
+        effect: iam.Effect.ALLOW
       }),
-      iam.PolicyStatement.fromJson({  
-        "Effect": "Allow",
-        "Action": [
-            "apigateway:*"
-        ],
-        "Resource": "arn:aws:apigateway:*::/*"
+      new iam.PolicyStatement({  
+        effect: iam.Effect.ALLOW,
+        actions: ["apigateway:*"],
+        resources: ["arn:aws:apigateway:*::/*"]
       }),
-      iam.PolicyStatement.fromJson({
-        "Action": [
+      new iam.PolicyStatement({
+        actions: [
           "s3:PutObject",
           "s3:GetObject",
           "s3:ListBucket",
@@ -111,8 +119,8 @@ export class DeploymentCdkResourcesStack extends cdk.Stack {
           "s3:GetBucketPolicy",
           "s3:PutBucketPublicAccessBlock"
         ],
-        "Resource": "arn:aws:s3:::*",
-        "Effect": "Allow"
+        resources: ["arn:aws:s3:::*"],
+        effect: iam.Effect.ALLOW
       })
     );
 
@@ -120,44 +128,48 @@ export class DeploymentCdkResourcesStack extends cdk.Stack {
       cdkProject.role!.addManagedPolicy(
         iam.ManagedPolicy.fromAwsManagedPolicyName(policyName)
       );
-    })
-    codeBuildPolicy.attachToRole(cdkProject.role!)
+    });
+    
+    codeBuildPolicy.attachToRole(cdkProject.role!);
 
-    var codeBuildTrigger = new lambda.Function(this, "Code Build Trigger", {
-      runtime: lambda.Runtime.NODEJS_12_X,
+    const codeBuildTrigger = new lambda.Function(this, "Code Build Trigger", {
+      runtime: lambda.Runtime.NODEJS_18_X,
       code: lambda.Code.fromInline(fs.readFileSync('./resources/lambda-functions/cdk-builder/cdkBuilder.js', 'utf-8')),
       handler: 'index.handler',
       environment: {
         'ProjectName': cdkProject.projectName
       },
-      timeout: cdk.Duration.minutes(15)
+      timeout: Duration.minutes(15)
     });
-    codeBuildTrigger.role!.addToPolicy(new iam.PolicyStatement({
-      resources: [ cdkProject.projectArn ],
-      actions: [ "codebuild:StartBuild"]
+    
+    codeBuildTrigger.addToRolePolicy(new iam.PolicyStatement({
+      resources: [cdkProject.projectArn],
+      actions: ["codebuild:StartBuild"]
     }));
 
-    var provider = cloudformation.CustomResourceProvider.fromLambda(codeBuildTrigger);
+    const provider = new cr.Provider(this, 'CodeBuildTriggerProvider', {
+      onEventHandler: codeBuildTrigger,
+    });
 
-    var codeBuildResource = new cdk.CfnCustomResource(this, 'CodeBuild Trigger Invoke', {
+    const codeBuildResource = new CustomResource(this, 'CodeBuild Trigger Invoke', {
       serviceToken: provider.serviceToken,
     });
 
-    var name = cdk.Stack.of(this).stackName;
+    const name = Stack.of(this).stackName;
 
     this.generateOutputAndParam(`UserCreationUrl-${name}`, 'CognitoUrl', codeBuildResource);
     this.generateOutputAndParam(`KibanaUrl-${name}`, 'KibanaUrl', codeBuildResource);
     this.generateOutputAndParam(`CloudfrontUrl-${name}`, 'CloudfrontUrl', codeBuildResource);
   }
 
-  generateOutputAndParam(parameterName: string, attributeName: string, codeBuildResource: cdk.CfnCustomResource) {
-    var attributeValue = Stack.of(this).resolve(codeBuildResource.getAtt(attributeName))
-    new cdk.CfnOutput(this, parameterName, {
+  generateOutputAndParam(parameterName: string, attributeName: string, codeBuildResource: CustomResource) {
+    const attributeValue = codeBuildResource.getAttString(attributeName);
+    new CfnOutput(this, parameterName, {
       value: attributeValue
     });
     new ssm.StringParameter(this, `ssm-${parameterName}`, {
       parameterName: parameterName,
       stringValue: attributeValue
-    })
+    });
   }
 }

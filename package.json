@@ -1,7 +1,7 @@
 {
   "name": "amazon-connect-monitoring",
   "version": "1.0.0",
-  "description": "",
+  "description": "Amazon Connect Call Quality Monitoring with New Relic",
   "main": "index.js",
   "scripts": {
     "postinstall": "(cd monitoring-stack-cdk && npm install); (cd deployment-stack-cdk && npm install)"
@@ -11,5 +11,8 @@
     "url": ""
   },
   "author": "",
-  "license": "MIT-0"
+  "license": "MIT-0",
+  "engines": {
+    "node": ">=20.0.0"
+  }
 }
